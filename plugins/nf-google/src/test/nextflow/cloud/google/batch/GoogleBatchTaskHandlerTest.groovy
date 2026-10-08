@@ -1377,4 +1377,29 @@ class GoogleBatchTaskHandlerTest extends Specification {
         'h?-standard-88'      | 'local-ssd'          // 'h?' does not match regex ^h3-.*$, so not classified as h3
     }
 
+    def 'should preserve startup error only without an exit code'() {
+        given:
+        def client = Mock(BatchClient)
+        def task = Mock(TaskRun) {
+            getExitStatus() >> exitCode
+            lazyName() >> 'startup-test'
+        }
+        def handler = new GoogleBatchTaskHandler(jobId: 'job1', taskId: '0', client: client, task: task)
+        def job = JobStatus.newBuilder().setState(JobStatus.State.FAILED)
+            .addStatusEvents(StatusEvent.newBuilder().setDescription('no VM has agent reporting correctly within the time window 1080 seconds'))
+            .addStatusEvents(StatusEvent.newBuilder().setDescription('generic failure')).build()
+        def pending = com.google.cloud.batch.v1.TaskStatus.newBuilder().setState(com.google.cloud.batch.v1.TaskStatus.State.PENDING).build()
+        client.getJobStatus('job1') >> job
+        client.getTaskStatus('job1', '0') >> pending
+
+        expect:
+        (handler.getJobError() instanceof GoogleBatchStartupException) == expected
+
+        where:
+        exitCode          | expected
+        Integer.MAX_VALUE | true
+        1                 | false
+        50001             | false
+    }
+
 }
