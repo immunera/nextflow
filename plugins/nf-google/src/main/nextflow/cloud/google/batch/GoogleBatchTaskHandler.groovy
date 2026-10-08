@@ -773,6 +773,13 @@ class GoogleBatchTaskHandler extends TaskHandler implements FusionAwareTask {
 
     protected Throwable getJobError() {
         try {
+            // Fail closed if the lifecycle read is incomplete. Preserve real exit codes.
+            if (!isArrayChild && task.exitStatus == Integer.MAX_VALUE) {
+                final startup = GoogleBatchStartupException.fromStatus(
+                    "${jobId} (uid=${uid}, task=${taskId})".toString(), client.getJobStatus(jobId), client.getTaskStatus(jobId, taskId))
+                if (startup != null)
+                    return startup
+            }
             final events = noTaskJobfailure
                 ? client.getJobStatus(jobId).getStatusEventsList()
                 : client.getTaskStatus(jobId, taskId).getStatusEventsList()
